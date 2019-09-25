@@ -1,0 +1,673 @@
+---
+title: "H2O Machine Learning Tutorial"
+author: "Erin LeDell"
+date: "9/24/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+[<img src="./img/latinr_logo.png" width="400">](http://latin-r.com/)
+
+This tutorial was created for the 2019 [Latin R Conference](https://latin-r.com/) in Santiago, Chile. 🇨🇱
+
+**Part 1: Intro to H2O Machine Learning**
+
+  - Basic data proce-pressing
+  - Introduction to supervised machine learning in H2O
+
+**Part 2: Optimizing Model Performance**
+
+  - Grid Search
+  - Stacked Ensembles
+  - Automatic Machine Learning (AutoML)
+
+## Part 1: Intro to H2O
+
+### Install H2O
+
+Software requirements:
+
+ - Java 8-12 above (both the JRE or JDK work).  There are tips [here](https://twitter.com/ledell/status/1148512123083010048) for installing Java (note that Java 12 is now supported as of H2O 3.26.0.1.)
+ - **h2o** R package can be downloaded from CRAN
+ 
+```{r}
+#install.packages("h2o")
+```
+
+### Start H2O
+
+Load the **h2o** R package and initialize a local H2O cluster.
+
+```{r}
+library("h2o") 
+h2o.init()
+h2o.no_progress()  # Turn off progress bars for notebook readability
+```
+
+
+### Load and prepare data
+
+Next we will import a cleaned up version of the Lending Club "Bad Loans" dataset. The purpose here is to predict whether a loan will be bad (not repaid to the lender). The response column, `"bad_loan"`, is encoded as `1` if the loan was bad, and `0` otherwise.
+
+#### Import data into H2O
+
+The best (most efficient) way to read the data from disk into H2O using `h2o.importFile()`, however if you have an R data.frame that you'd like to use then you can use the `as.h2o()` function instead.
+
+```{r}
+# Use local data file or download from GitHub if not available locally
+data_file <- "./data/loan.csv"
+if (!file.exists(data_file)) {
+  data_path <- "https://raw.githubusercontent.com/ledell/LatinR-2019-h2o-tutorial/master/data/loan.csv"
+} 
+data <- h2o.importFile(data_file)  # 163,987 rows x 15 columns
+dim(data)
+```
+
+*Note: These examples can be run in a reasonable amount of time on an 8-core MacBook Pro.  However, if you are using a computer with fewer cores or a slower processor, they will take longer.  Unless you are running an 8-core Macbook Pro (or faster), we suggest you take a subset of the data as follows so that you can move through the tutorial at a fast pace:*
+
+```{r}
+# Optional (to speed up the examples)
+nrows_subset <- 30000
+data <- data[1:nrows_subset, ]
+```
+
+#### Convert response to factor
+
+Since we want to train a binary classification model, we must ensure that the response is coded as a "factor" (as opposed to numeric).  The column type of the response tells H2O whether you want to train a classification model or a regression model.  If your response is text, then when you load in the file, it will automatically be encoded as a "factor".  However, if, for example, your response is 0/1, H2O will assume it's numeric, which means that H2O will train a regression model instead.  In this case we must do an extra step to convert the column type to "factor".
+
+```{r}
+data$bad_loan <- as.factor(data$bad_loan)  #encode the binary repsonse as a factor
+h2o.levels(data$bad_loan)  #optional: this shows the factor levels
+```
+
+#### Inspect the data
+
+Let's take a look at the data.  It's important to look for things like missing data and categorical/factor columns (Type "enum").
+
+It's useful to take a look at the data even though there's nothing we need to do since H2O handles both missing data and categorical columns natively!  H2O will do an internal one-hot encoding of categorical columns for all algorithms with the exception of GBM and Random Forest which can handle categorical columns natively.  H2O also will normalize numeric columns internally when needed.  There's very little to worry about with respect to data pre-processing when you use H2O.
+
+
+```{r}
+h2o.describe(data)
+```
+
+#### Split the data
+
+In supervised learning problems, it's common to split the data into several pieces.  One piece is used for training the model and one is to be used for testing. In some cases, we may also want to use a seperate holdout set ("validation set") which we use to help the model train.  There are several types of validation strategies used in machine learning (e.g. validation set, cross-validation), and for the purposes of the tutorial, we will use a training set, a validation set and a test set.
+
+```{r}
+splits <- h2o.splitFrame(data = data, 
+                         ratios = c(0.7, 0.15),  # partition data into 70%, 15%, 15% chunks
+                         destination_frames = c("train", "valid", "test"), # frame ID (not required)
+                         seed = 1)  # setting a seed will guarantee reproducibility
+train <- splits[[1]]
+valid <- splits[[2]]
+test <- splits[[3]]
+```
+
+
+Take a look at the size of each partition. Notice that `h2o.splitFrame()` uses approximate splitting not exact splitting (for efficiency).  The number of rows are not exactly 70%, 15% and 15%, but they are close enough.  This is one of the many efficiencies that H2O includes so that we can scale to big datasets.  
+
+```{r}
+nrow(train)
+nrow(valid)
+nrow(test)
+```
+
+#### Identify response and predictor columns
+
+In H2O modeling functions, we use the arguments `x` and `y` to designate the names (or indices) of the predictor columns (`x`) and the response column (`y`).
+
+If all of the columns in your dataset except the response column are going to be used as predictors, then you can specify only `y` and ignore the `x` argument.  However, many times we might want to remove certain columns for various reasons (Unique ID column, data leakage, etc.) so that's when `x` is useful.  Either column names and indices can be used to specify columns.
+
+```{r}
+y <- "bad_loan"
+x <- setdiff(names(data), c(y, "int_rate"))  #remove the interest rate column because it's correlated with the outcome
+print(x)
+```
+
+
+### Supervised Learning in H2O
+
+Now that we have prepared the data, we can train some models.  We will start by demonstrating how to train a handful of the most popular [supervised machine learning algorithms in H2O](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science.html#supervised).  Each algorithm section will introduce a new feature and build in complexity.
+
+1. <a href="#glm">Generalized Linear Model (GLM)</a>
+2. <a href="#random-forest">Random Forest</a>
+3. <a href="#gbm">Gradient Boosting Machine (GBM)</a>
+4. <a href="#deep-learning">Deep Learning</a>
+
+### GLM 
+
+Let's start with a basic binomial Generalized Linear Model (GLM).  By default, `h2o.glm()` uses a regularized, elastic net model (with alpha = 0.5).  This algorithm is modeled after the `glmnet()` function and so you can expect similar defaults and results.
+
+#### Fit a default GLM
+
+For now, let's just pass in the `train` dataset to the `training_frame` argument.  We will skip the `validation_frame` for now.
+
+```{r}
+glm_fit1 <- h2o.glm(x = x, 
+                    y = y, 
+                    training_frame = train,
+                    family = "binomial")  #Like glm() and glmnet(), h2o.glm() has the family argument
+```
+
+#### Model summary
+
+Take a look at the model summary:
+```{r}
+glm_fit1@model$model_summary
+```
+
+#### Variable importance
+
+All H2O models have some concept of variable importance.  In GLMs, the variable importance is specified by the coefficient magnitudes.
+
+We can access those values directly.  Something to notice here is that all the original categorical variables have been one-hot encoded.  Therefore instead of seeing a single column for `addr_state`, instead we see a column for each state (e.g. `addr_state.AL`, `addr_state.AK`, etc). Let's just take a look at the first few coefficients by wrapping this in `head()`:
+```{r}
+head(h2o.coef(glm_fit1))
+```
+
+We can also plot the top variables using the `h2o.varimp_plot()` function.
+
+```{r}
+h2o.varimp_plot(glm_fit1)
+```
+
+#### Performance metrics
+
+To generate performance metrics on a test set, we use the `h2o.performance()` function which generates a `H2OBinomialMetrics` object.  Stored in this object are a handful of different performance metrics. 
+
+```{r}
+glm_perf1 <- h2o.performance(model = glm_fit1,
+                             newdata = test)
+print(glm_perf1)
+```
+
+Instead of printing the entire model performance metrics object, it is probably easier to print just the metric that you are interested in comparing using a utility function like `h2o.auc()`.
+
+```{r}
+# Retreive test set AUC from the performance object
+h2o.auc(glm_perf1)
+```
+
+#### Generate predictions
+
+If you want to generate predictions on a test set that can be done as follows:
+```{r}
+preds <- predict(glm_fit1, newdata = test)
+head(preds)
+```
+
+This For classification, this gives a three-column frame.  The first column is the predicted class, based on a threshold chosen optimally by H2O.  The predicted values for each each class follows. 
+
+#### Cross-validation
+
+Next we will provide a simple example of how to do cross-validation in H2O.  It's quite easy as all you need to do is specify the `nfolds` argument.  In the case of k-fold cross-validation, a total of k+1 models will be trained.  Each of the k models in the CV process are trained on k/(k+1) percent of the data and evaluated on 1/k percent of the data, and then the final model is trained on the full/original training frame. The final model can be used to score new samples and will be identical to model that's trained when cross-validation is turned off (`nfolds = 0`).
+
+#### Train a GLM with 5-fold CV
+
+Here we will perform 5-fold cross-validation and then take a look at the 5-fold cross-validated AUC.  Since the folds will be randomly selected, we must set a seed to ensure reproducibility.
+
+```{r}
+glm_fit2 <- h2o.glm(x = x, 
+                    y = y, 
+                    training_frame = train,
+                    family = "binomial",
+                    nfolds = 5,
+                    seed = 1)
+```
+
+To retrieve the cross-validated AUC estimate, we pass the model to the `h2o.auc()` function. By default it will return the training AUC unless we set `xval = TRUE`.
+
+```{r}
+h2o.auc(glm_fit2, xval = TRUE)
+```
+
+#### Save models
+
+There is information in the [H2O User Guide](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/index.html) about how to [save and load H2O models](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/save-and-load-model.html) and how to [deploy models in production](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/productionizing.html).
+
+
+### Random Forest
+
+H2O's [Random Forest](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/drf.html) implements a distributed version of the standard Random Forest algorithm. First we will train a basic Random Forest model with default parameters. The Random Forest model will infer the response "distribution" from the response encoding automatically. A seed is required for reproducibility.
+
+#### Fit a default Random Forest
+
+```{r}
+rf_fit1 <- h2o.randomForest(x = x,
+                            y = y,
+                            training_frame = train,
+                            seed = 1)
+rf_fit1@model$model_summary
+```
+
+#### Increase the number of trees
+
+Next we will increase the number of trees used in the forest by setting `ntrees = 200`. The default number of trees in an H2O Random Forest is 50.  Usually increasing the number of trees in a Random Forest will increase performance as well.  Unlike Gradient Boosting Machines (GBMs), Random Forests are fairly resistant (although not free from) overfitting. See the GBM example below for additional guidance on preventing overfitting using H2O's early stopping functionality.
+
+#### Fit & evaluate a new Random Forest
+
+Here we will pass along a `validation_frame` so we can observe and evaluate the performance of the Random Forest as the number of trees increases.
+
+```{r}
+rf_fit2 <- h2o.randomForest(x = x,
+                            y = y,
+                            training_frame = train,
+                            validation_frame = valid,
+                            ntrees = 200,
+                            seed = 1)
+```
+
+#### Plot scoring history
+
+```{r}
+plot(rf_fit2, metric = "AUC")
+```
+
+
+#### Compare performance of two models
+
+Let's compare the performance of the two Random Forests:
+
+```{r}
+rf_perf1 <- h2o.performance(model = rf_fit1,
+                            newdata = test)
+rf_perf2 <- h2o.performance(model = rf_fit2,
+                            newdata = test)
+
+# Retreive test set AUC
+h2o.auc(rf_perf1)
+h2o.auc(rf_perf2)
+```
+
+#### Introducing early stopping
+
+Is 200 trees "enough"?  Or should we keep going?  By visually looking at the performance plot, it seems like the validation performance has leveled out by 200 trees, but sometimes you can squeeze a bit more performance out by increaseing the number of trees.  As mentioned above, it usually improves performance to keep adding more trees, however it will take longer to train and score a bigger forest so it makes sense to find the smallest number of trees that produce a "good enough" model.  This is a great time to try out H2O's early stopping functionality!
+
+There are several parameters that should be used to control early stopping.  The three that are common to all the algorithms are: [`stopping_rounds`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/algo-params/stopping_rounds.html), [`stopping_metric`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/algo-params/stopping_metric.html) and [`stopping_tolerance`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/algo-params/stopping_tolerance.html).  The stopping metric is the metric by which you'd like to measure performance, and so we will choose AUC here.  
+
+In order to evaluate when to stop training (and to avoid overfitting), we need to periodically evaluate the model after training X number of trees.  The [`score_tree_interval`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/algo-params/score_tree_interval.html) is a parameter specific to the tree-based models (Random Forest, GBM, XGBoost). Setting `score_tree_interval = 20` will score the model after every 20 trees.  Scoring the model incurs a computational cost and slows down training, which is why we don't usually want to score after every tree.  An interval length between 5 and 50 is reasonable.
+
+To turn on early stopping, we must set `stopping_rounds` to something bigger than zero (the default).  It is advisable to set `ntrees` to something big (e.g. 1000) as it represents the upper bound on the number of trees.  There is no problem with setting it to a large number because H2O will typically stop training before it reaches the maximum number of trees.
+
+The parameters we have set below specify that the model will stop training after there have been three scoring intervals where the AUC has not increased more than 0.001.  Since we have specified a validation frame, the stopping tolerance will be computed on validation AUC rather than training AUC. It is highly advised to use a validation frame or cross-validation when performing early stopping.
+
+#### Train a Random Forest with early stopping
+
+```{r}
+rf_fit3 <- h2o.randomForest(x = x,
+                            y = y,
+                            training_frame = train,
+                            validation_frame = valid,
+                            ntrees = 1000,              # set large for early stopping
+                            stopping_rounds = 5,        # early stopping
+                            stopping_tolerance = 0.001, # early stopping (default)
+                            stopping_metric = "AUC",    # early stopping
+                            score_tree_interval = 20,   # early stopping
+                            seed = 1)
+```
+
+#### Inspect auto-tuned model
+
+Let's see what the optimal number of trees is, based on early stopping:
+```{r}
+rf_fit3@model$model_summary
+```
+
+#### Plot scoring history
+
+```{r}
+plot(rf_fit3, metric = "AUC")
+```
+
+#### View scoring history
+
+```{r}
+sh <- h2o.scoreHistory(rf_fit3)
+sh[, c("number_of_trees", "validation_auc")]
+```
+
+#### Compare performance of the three Random Forest models
+
+```{r}
+rf_perf3 <- h2o.performance(model = rf_fit3,
+                            newdata = test)
+
+# Retreive test set AUC
+h2o.auc(rf_perf1)
+h2o.auc(rf_perf2)
+h2o.auc(rf_perf3)
+```
+
+### Gradient Boosting Machine (GBM)
+
+H2O's [Gradient Boosting Machine (GBM)](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/gbm.html) implements a Stochastic GBM, which can improve performance as compared to the original GBM implementation.
+
+#### Train a default GBM
+
+Now we will train a basic GBM model. The GBM model will infer the response distribution from the response encoding if not specified explicitly through the `distribution` argument. A seed is required for reproducibility.
+
+```{r}
+gbm_fit1 <- h2o.gbm(x = x,
+                    y = y,
+                    training_frame = train,
+                    seed = 1)
+```
+
+#### Increase trees and use early stopping
+
+Increasing the number of trees in a GBM is one way to increase performance of the model, however, you have to be careful not to overfit your model by using too many trees. Just like the Random Forest, the default number of trees in an H2O GBM is 50.  As we did in the Random Forest example, we can turn on early stopping to find an "optimal" number of trees.  Let's use 1000 as an upper limit for `ntrees`.
+
+```{r}
+gbm_fit2 <- h2o.gbm(x = x,
+                    y = y,
+                    training_frame = train,
+                    validation_frame = valid,
+                    ntrees = 1000,              # set large for early stopping
+                    stopping_rounds = 5,        # early stopping
+                    stopping_tolerance = 0.001, # early stopping (default)
+                    stopping_metric = "AUC",    # early stopping
+                    score_tree_interval = 20,   # early stopping
+                    seed = 1)
+```
+
+#### Compare the performance of the two GBMs
+
+```{r}
+gbm_perf1 <- h2o.performance(model = gbm_fit1,
+                             newdata = test)
+gbm_perf2 <- h2o.performance(model = gbm_fit2,
+                             newdata = test)
+
+# Retreive test set AUC
+h2o.auc(gbm_perf1)
+h2o.auc(gbm_perf2)
+```
+
+#### Inspect auto-tuned model
+
+Let's see what the optimal number of trees is, based on early stopping:
+
+```{r}
+gbm_fit2@model$model_summary
+```
+
+#### Plot scoring history
+
+Let's plot scoring history.  This time let's look at the peformance based on AUC and also based on logloss (for comparison).
+
+```{r}
+plot(gbm_fit2, metric = "AUC")
+plot(gbm_fit2, metric = "logloss")
+```
+
+#### Variable importance
+
+Just for fun, let's look at the variable importance.  Something to notice here is that the original categorical variables have been preserved.  They have not been one-hot encoded.  For example, we see a single column for `addr_state`, instead of a column for each state (e.g. `addr_state.AL`, `addr_state.AK`, etc) like we did in the GLM.  This is because H2O tree-based algorithms do a "group split" in the individual trees, allowing all categories to be considered together.
+
+```{r}
+h2o.varimp_plot(gbm_fit2)
+```
+
+### Deep Learning
+
+H2O's Deep Learning algorithm is a multilayer feed-forward artificial neural network. It can also be used to train an autoencoder (useful for anomaly detection) or to generate features based on hidden layer representations of the data. In this example we will train a standard supervised prediction model.
+
+First we will train a basic Deep Neural Network (DNN) with default parameters. The Deep  model will infer the response distribution from the response encoding if it is not specified explicitly through the `distribution` argument.  H2O's Deep Learning will not be reproducible if it is run on more than a single core, so in this example, the performance metrics below may vary slightly from what you see on your machine.  Early stopping is enabled by default, so below, it will use the training set and default stopping parameters to perform early stopping.
+
+#### Train a default DNN with no early stopping
+
+```{r}
+dl_fit1 <- h2o.deeplearning(x = x,
+                            y = y,
+                            training_frame = train,
+                            seed = 1)
+```
+
+#### Increase the number of epochs
+
+Next we will increase the number of epochs used in the the DNN by setting `epochs=20` (the default is 10).  Increasing the number of epochs in a deep neural net may increase performance of the model, however, you have to be careful not to overfit your model to your training data.  To automatically find the optimal number of epochs, you must use H2O's early stopping functionality.  Unlike the rest of the H2O algorithms, H2O's DNN will use early stopping by default, so for comparison we will first turn off early stopping.  We do this in the next example by setting `stopping_rounds = 0`.
+
+```{r}
+dl_fit2 <- h2o.deeplearning(x = x,
+                            y = y,
+                            training_frame = train,
+                            epochs = 20,
+                            stopping_rounds = 0,  # disable early stopping
+                            seed = 1)
+```
+
+#### Train a DNN with early stopping
+
+This next example will use the same model parameters as `dl_fit2`. This time, we will turn on early stopping and specify the stopping criterion.  We will also pass a validation set, as is recommended for early stopping.
+
+```{r}
+dl_fit3 <- h2o.deeplearning(x = x,
+                            y = y,
+                            training_frame = train,
+                            validation_frame = valid,  
+                            epochs = 20,
+                            score_each_iteration = TRUE,  #early stopping
+                            stopping_rounds = 3,          #early stopping
+                            stopping_metric = "AUC",      #early stopping
+                            stopping_tolerance = 0.001,   #early stopping (default)
+                            seed = 1)
+```
+
+
+#### Compare performance
+
+Let's compare the performance of the three DL models.
+
+```{r}
+dl_perf1 <- h2o.performance(model = dl_fit1,
+                            newdata = test)
+dl_perf2 <- h2o.performance(model = dl_fit2,
+                            newdata = test)
+dl_perf3 <- h2o.performance(model = dl_fit3,
+                            newdata = test)
+# Retreive test set AUC
+h2o.auc(dl_perf1)
+h2o.auc(dl_perf2)
+h2o.auc(dl_perf3)
+```
+
+#### Plot & view scoring history
+
+Look at the scoring history for third DNN model (with early stopping).  At the end, it will overwrite the model with the previous "best" model so there might be a discontinuity in the line at the last step.
+
+```{r}
+plot(dl_fit3, metric = "AUC")
+```
+
+## Part 2: Optimizing model performance
+
+### Grid Search
+
+One of the most powerful algorithms inside H2O is the [XGBoost](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/xgboost.html) algorithm.  Unlike the rest of the H2O algorithms, XGBoost is a third-party software tool which we have packaged and provided an interface for.  We preserved all the default values from the original XGBoost software, however, some of the defaults are not very good (e.g. learning rate) and need to be tuned in order to achive superior results. 
+
+#### XGBoost with Random Grid Search
+
+Let's do a grid search for XGBoost.  [Grid search in H2O](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/grid-search.html) has it's own interface which requires the user to identify the hyperparameters that they would like to search over, as well as the ranges for those paramters.
+
+#### Grid hyperparamters & search strategy
+
+As an example, we will do a random grid search over the following hyperparamters:
+
+- `learn_rate`
+- `max_depth`
+- `sample_rate`
+- `col_sample_rate`
+
+```{r}
+xgb_params <- list(learn_rate = seq(0.1, 0.3, 0.01),
+                   max_depth = seq(2, 10, 1),
+                   sample_rate = seq(0.9, 1.0, 0.05),
+                   col_sample_rate = seq(0.1, 1.0, 0.1))
+
+search_criteria <- list(strategy = "RandomDiscrete",
+                        seed = 1, #seed for the random grid selection process
+                        max_models = 5)  #can also use `max_runtime_secs` instead
+```
+
+#### Execute random grid search
+
+To execute the grid, we pass along the list of parameters and search criteria. In this case, we will do a "Random Grid Search" which samples from the grid which you specify.  You control how long the search is performed either by specifying the the number of models (`max_models`) or by time (`max_runtime_secs`).
+
+Any other non-default parameters for the algorithm can be passed directly to the `h2o.grid()` function.  For example, `ntrees = 100`.  In practice, as we learned above, it would be beneficial to use early stopping to find the optimal number of trees for each model, but for simplicity and demonstration purposes, we will fix the number of trees to 100.  Note that the `seed` that we pass to the `h2o.grid()` function gets piped to each model (this is different from the random grid seed which we set in `search_criteria`).
+
+```{r}
+xgb_grid <- h2o.grid(algorithm = "xgboost",
+                     grid_id = "xgb_grid",
+                     x = x, y = y,
+                     training_frame = train,
+                     validation_frame = valid,
+                     ntrees = 100,
+                     seed = 1,
+                     hyper_params = xgb_params,
+                     search_criteria = search_criteria)
+```
+
+#### View model performance over the grid
+
+```{r}
+gbm_gridperf <- h2o.getGrid(grid_id = xgb_grid@grid_id, 
+                            sort_by = "auc", 
+                            decreasing = TRUE)
+print(gbm_gridperf)
+```
+
+#### Inspect & evaluate the best model
+
+Grab the top model (as determined by validation AUC) and calculute the performance on the test set. This will allow us to compare the model to all the previous models.  To get an H2O model by model ID, we use the `h2o.getModel()` function.
+
+```{r}
+xgb_fit <- h2o.getModel(gbm_gridperf@model_ids[1][[1]])
+```
+
+Evaluate test set AUC.
+
+```{r}
+xgb_perf <- h2o.performance(model = xgb_fit,
+                            newdata = test)
+# Retreive test set AUC
+h2o.auc(xgb_perf)
+```
+
+### Stacked Ensembles
+
+H2O's [Stacked Ensemble](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/stacked-ensembles.html) method is supervised ensemble machine learning algorithm that finds the optimal combination of a collection of prediction algorithms using a process called stacking. Like all supervised models in H2O, Stacked Enemseble supports regression, binary classification and multiclass classification.
+
+#### Train and cross-validate three base models
+
+```{r}
+nfolds <- 5
+
+# Train & Cross-validate a GBM
+my_gbm <- h2o.gbm(x = x,
+                  y = y,
+                  training_frame = train,
+                  distribution = "bernoulli",
+                  nfolds = nfolds,
+                  keep_cross_validation_predictions = TRUE,
+                  seed = 1)
+
+# Train & Cross-validate an XGBoost model
+my_xgb <- h2o.xgboost(x = x,
+                      y = y,
+                      training_frame = train,
+                      nfolds = nfolds,
+                      keep_cross_validation_predictions = TRUE,
+                      seed = 1)
+
+# Train & Cross-validate a DNN
+my_dl <- h2o.deeplearning(x = x,
+                          y = y,
+                          training_frame = train,
+                          nfolds = nfolds,
+                          keep_cross_validation_predictions = TRUE,
+                          seed = 1)
+```
+
+
+#### Train a simple three-model ensemble
+
+```{r}
+# Train a stacked ensemble using the GBM and RF above
+ensemble <- h2o.stackedEnsemble(x = x,
+                                y = y,
+                                training_frame = train,
+                                base_models = list(my_gbm, my_xgb, my_dl))
+```
+
+
+#### Evaluate ensemble performance
+
+```{r}
+# Eval ensemble performance on a test set
+perf <- h2o.performance(ensemble, newdata = test)
+
+# Compare to base learner performance on the test set
+perf_gbm_test <- h2o.performance(my_gbm, newdata = test)
+perf_xgb_test <- h2o.performance(my_xgb, newdata = test)
+perf_dl_test <- h2o.performance(my_dl, newdata = test)
+baselearner_best_auc_test <- max(h2o.auc(perf_gbm_test), 
+                                 h2o.auc(perf_xgb_test),
+                                 h2o.auc(perf_dl_test))
+ensemble_auc_test <- h2o.auc(perf)
+print(sprintf("Best Base-learner Test AUC:  %s", baselearner_best_auc_test))
+print(sprintf("Ensemble Test AUC:  %s", ensemble_auc_test))
+```
+
+
+### AutoML
+
+[H2O AutoML](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/automl.html) can be used for automating the machine learning workflow, which includes automatic training and tuning of many models within a user-specified time-limit. Stacked Ensembles – one based on all previously trained models, another one on the best model of each family – will be automatically trained on collections of individual models to produce highly predictive ensemble models which, in most cases, will be the top performing models in the AutoML Leaderboard.
+
+#### Run AutoML 
+
+Run AutoML, stopping after 10 models.  The `max_models` argument specifies the number of individual (or "base") models, and does not include the two ensemble models that are trained at the end.
+```{r}
+aml <- h2o.automl(y = y, x = x,
+                  training_frame = train,
+                  max_models = 10,
+                  seed = 1)
+```
+
+
+#### View AutoML leaderboard
+
+Next, we will view the AutoML Leaderboard.  By default, the AutoML leaderboard uses 5-fold  cross-validation metrics to rank the models.  
+
+A default performance metric for each machine learning task (binary classification, multiclass classification, regression) is specified internally and the leaderboard will be sorted by that metric.  In the case of binary classification, the default ranking metric is Area Under the ROC Curve (AUC).  In the future, the user will be able to specify any of the H2O metrics so that different metrics can be used to generate rankings on the leaderboard.
+
+The leader model is stored at `aml@leader` and the leaderboard is stored at `aml@leaderboard`.
+```{r}
+lb <- aml@leaderboard
+```
+
+Now we will view a snapshot of the top models.  Here we should see the two Stacked Ensembles at or near the top of the leaderboard.  Stacked Ensembles can almost always outperform a single model.
+```{r}
+print(lb)
+```
+
+To view the entire leaderboard, specify the `n` argument of the `print.H2OFrame()` function as the total number of rows:
+```{r}
+print(lb, n = nrow(lb))
+```
+
+#### Evaluate leader model performance
+
+Although we can use the cross-validation metrics from the leaderboard to estimate the performance of the model, if we want to compare the top AutoML model to the previously trained models, we must score it on the same test set.  
+
+```{r}
+aml_perf <- h2o.performance(model = aml@leader,
+                            newdata = test)
+h2o.auc(aml_perf)
+```
+
+
