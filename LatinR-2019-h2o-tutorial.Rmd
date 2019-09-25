@@ -15,7 +15,7 @@ This tutorial was created for the 2019 [Latin R Conference](https://latin-r.com/
 
 **Part 1: Intro to H2O Machine Learning**
 
-  - Basic data proce-pressing
+  - Basic data pre-processing
   - Introduction to supervised machine learning in H2O
 
 **Part 2: Optimizing Model Performance**
