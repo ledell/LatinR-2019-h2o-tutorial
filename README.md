@@ -1,6 +1,6 @@
 # H2O Machine Learning Tutorial
 
-[<img src="./img/latinr_logo.png" width="400">](http://latin-r.com/)
+<img src="./img/latinr_logo.png" width="400">
 
 This tutorial was created for the 2019 [Latin R Conference](https://latin-r.com/) in Santiago, Chile. 🇨🇱
 
