@@ -1,7 +1,5 @@
 # H2O Machine Learning Tutorial
 
-<img src="./img/latinr_logo.png" width="400">
-
 This tutorial was created for the 2019 [Latin R Conference](https://latin-r.com/) in Santiago, Chile. 🇨🇱
 
 **Part 1: Intro to H2O Machine Learning**
