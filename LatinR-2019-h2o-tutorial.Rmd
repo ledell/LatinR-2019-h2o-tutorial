@@ -60,7 +60,7 @@ The best (most efficient) way to read the data from disk into H2O using `h2o.imp
 # Use local data file or download from GitHub if not available locally
 data_file <- "./data/loan.csv"
 if (!file.exists(data_file)) {
-  data_path <- "https://raw.githubusercontent.com/ledell/LatinR-2019-h2o-tutorial/master/data/loan.csv"
+  data_file <- "https://raw.githubusercontent.com/ledell/LatinR-2019-h2o-tutorial/master/data/loan.csv"
 } 
 data <- h2o.importFile(data_file)  # 163,987 rows x 15 columns
 dim(data)

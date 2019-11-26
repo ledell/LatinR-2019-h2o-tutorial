@@ -216,7 +216,7 @@ $(document).ready(function () {
 <pre class="r"><code># Use local data file or download from GitHub if not available locally
 data_file &lt;- &quot;./data/loan.csv&quot;
 if (!file.exists(data_file)) {
-  data_path &lt;- &quot;https://raw.githubusercontent.com/ledell/LatinR-2019-h2o-tutorial/master/data/loan.csv&quot;
+  data_file &lt;- &quot;https://raw.githubusercontent.com/ledell/LatinR-2019-h2o-tutorial/master/data/loan.csv&quot;
 } 
 data &lt;- h2o.importFile(data_file)  # 163,987 rows x 15 columns
 dim(data)</code></pre>
