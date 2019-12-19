@@ -70,8 +70,9 @@ dim(data)
 
 ```{r}
 # Optional (to speed up the examples)
-nrows_subset <- 30000
-data <- data[1:nrows_subset, ]
+set.seed(8818)
+nrows_subset <- 30000  # sample nrows_subset rows
+data <- data[sample(nrow(data), nrows_subset), ]
 ```
 
 #### Convert response to factor
@@ -79,7 +80,7 @@ data <- data[1:nrows_subset, ]
 Since we want to train a binary classification model, we must ensure that the response is coded as a "factor" (as opposed to numeric).  The column type of the response tells H2O whether you want to train a classification model or a regression model.  If your response is text, then when you load in the file, it will automatically be encoded as a "factor".  However, if, for example, your response is 0/1, H2O will assume it's numeric, which means that H2O will train a regression model instead.  In this case we must do an extra step to convert the column type to "factor".
 
 ```{r}
-data$bad_loan <- as.factor(data$bad_loan)  #encode the binary repsonse as a factor
+data$bad_loan <- as.factor(data$bad_loan)  #encode the binary response as a factor
 h2o.levels(data$bad_loan)  #optional: this shows the factor levels
 ```
 
@@ -96,7 +97,7 @@ h2o.describe(data)
 
 #### Split the data
 
-In supervised learning problems, it's common to split the data into several pieces.  One piece is used for training the model and one is to be used for testing. In some cases, we may also want to use a seperate holdout set ("validation set") which we use to help the model train.  There are several types of validation strategies used in machine learning (e.g. validation set, cross-validation), and for the purposes of the tutorial, we will use a training set, a validation set and a test set.
+In supervised learning problems, it's common to split the data into several pieces.  One piece is used for training the model and one is to be used for testing. In some cases, we may also want to use a separate holdout set ("validation set") which we use to help the model train.  There are several types of validation strategies used in machine learning (e.g. validation set, cross-validation), and for the purposes of the tutorial, we will use a training set, a validation set and a test set.
 
 ```{r}
 splits <- h2o.splitFrame(data = data, 
@@ -119,7 +120,7 @@ nrow(test)
 
 #### Identify response and predictor columns
 
-In H2O modeling functions, we use the arguments `x` and `y` to designate the names (or indices) of the predictor columns (`x`) and the response column (`y`).
+In H2O modelling functions, we use the arguments `x` and `y` to designate the names (or indices) of the predictor columns (`x`) and the response column (`y`).
 
 If all of the columns in your dataset except the response column are going to be used as predictors, then you can specify only `y` and ignore the `x` argument.  However, many times we might want to remove certain columns for various reasons (Unique ID column, data leakage, etc.) so that's when `x` is useful.  Either column names and indices can be used to specify columns.
 
@@ -189,7 +190,7 @@ print(glm_perf1)
 Instead of printing the entire model performance metrics object, it is probably easier to print just the metric that you are interested in comparing using a utility function like `h2o.auc()`.
 
 ```{r}
-# Retreive test set AUC from the performance object
+# Retrieve test set AUC from the performance object
 h2o.auc(glm_perf1)
 ```
 
@@ -279,14 +280,14 @@ rf_perf1 <- h2o.performance(model = rf_fit1,
 rf_perf2 <- h2o.performance(model = rf_fit2,
                             newdata = test)
 
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(rf_perf1)
 h2o.auc(rf_perf2)
 ```
 
 #### Introducing early stopping
 
-Is 200 trees "enough"?  Or should we keep going?  By visually looking at the performance plot, it seems like the validation performance has leveled out by 200 trees, but sometimes you can squeeze a bit more performance out by increaseing the number of trees.  As mentioned above, it usually improves performance to keep adding more trees, however it will take longer to train and score a bigger forest so it makes sense to find the smallest number of trees that produce a "good enough" model.  This is a great time to try out H2O's early stopping functionality!
+Is 200 trees "enough"?  Or should we keep going?  By visually looking at the performance plot, it seems like the validation performance has leveled out by 200 trees, but sometimes you can squeeze a bit more performance out by increasing the number of trees.  As mentioned above, it usually improves performance to keep adding more trees, however it will take longer to train and score a bigger forest so it makes sense to find the smallest number of trees that produce a "good enough" model.  This is a great time to try out H2O's early stopping functionality!
 
 There are several parameters that should be used to control early stopping.  The three that are common to all the algorithms are: [`stopping_rounds`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/algo-params/stopping_rounds.html), [`stopping_metric`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/algo-params/stopping_metric.html) and [`stopping_tolerance`](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/algo-params/stopping_tolerance.html).  The stopping metric is the metric by which you'd like to measure performance, and so we will choose AUC here.  
 
@@ -337,7 +338,7 @@ sh[, c("number_of_trees", "validation_auc")]
 rf_perf3 <- h2o.performance(model = rf_fit3,
                             newdata = test)
 
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(rf_perf1)
 h2o.auc(rf_perf2)
 h2o.auc(rf_perf3)
@@ -383,7 +384,7 @@ gbm_perf1 <- h2o.performance(model = gbm_fit1,
 gbm_perf2 <- h2o.performance(model = gbm_fit2,
                              newdata = test)
 
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(gbm_perf1)
 h2o.auc(gbm_perf2)
 ```
@@ -398,7 +399,7 @@ gbm_fit2@model$model_summary
 
 #### Plot scoring history
 
-Let's plot scoring history.  This time let's look at the peformance based on AUC and also based on logloss (for comparison).
+Let's plot scoring history.  This time let's look at the performance based on AUC and also based on logloss (for comparison).
 
 ```{r}
 plot(gbm_fit2, metric = "AUC")
@@ -470,7 +471,7 @@ dl_perf2 <- h2o.performance(model = dl_fit2,
                             newdata = test)
 dl_perf3 <- h2o.performance(model = dl_fit3,
                             newdata = test)
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(dl_perf1)
 h2o.auc(dl_perf2)
 h2o.auc(dl_perf3)
@@ -488,15 +489,15 @@ plot(dl_fit3, metric = "AUC")
 
 ### Grid Search
 
-One of the most powerful algorithms inside H2O is the [XGBoost](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/xgboost.html) algorithm.  Unlike the rest of the H2O algorithms, XGBoost is a third-party software tool which we have packaged and provided an interface for.  We preserved all the default values from the original XGBoost software, however, some of the defaults are not very good (e.g. learning rate) and need to be tuned in order to achive superior results. 
+One of the most powerful algorithms inside H2O is the [XGBoost](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/xgboost.html) algorithm.  Unlike the rest of the H2O algorithms, XGBoost is a third-party software tool which we have packaged and provided an interface for.  We preserved all the default values from the original XGBoost software, however, some of the defaults are not very good (e.g. learning rate) and need to be tuned in order to achieve superior results. 
 
 #### XGBoost with Random Grid Search
 
-Let's do a grid search for XGBoost.  [Grid search in H2O](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/grid-search.html) has it's own interface which requires the user to identify the hyperparameters that they would like to search over, as well as the ranges for those paramters.
+Let's do a grid search for XGBoost.  [Grid search in H2O](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/grid-search.html) has it's own interface which requires the user to identify the hyperparameters that they would like to search over, as well as the ranges for those parameters.
 
-#### Grid hyperparamters & search strategy
+#### Grid hyperparameters & search strategy
 
-As an example, we will do a random grid search over the following hyperparamters:
+As an example, we will do a random grid search over the following hyperparameters:
 
 - `learn_rate`
 - `max_depth`
@@ -543,7 +544,7 @@ print(gbm_gridperf)
 
 #### Inspect & evaluate the best model
 
-Grab the top model (as determined by validation AUC) and calculute the performance on the test set. This will allow us to compare the model to all the previous models.  To get an H2O model by model ID, we use the `h2o.getModel()` function.
+Grab the top model (as determined by validation AUC) and calculate the performance on the test set. This will allow us to compare the model to all the previous models.  To get an H2O model by model ID, we use the `h2o.getModel()` function.
 
 ```{r}
 xgb_fit <- h2o.getModel(gbm_gridperf@model_ids[1][[1]])
@@ -554,13 +555,13 @@ Evaluate test set AUC.
 ```{r}
 xgb_perf <- h2o.performance(model = xgb_fit,
                             newdata = test)
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(xgb_perf)
 ```
 
 ### Stacked Ensembles
 
-H2O's [Stacked Ensemble](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/stacked-ensembles.html) method is supervised ensemble machine learning algorithm that finds the optimal combination of a collection of prediction algorithms using a process called stacking. Like all supervised models in H2O, Stacked Enemseble supports regression, binary classification and multiclass classification.
+H2O's [Stacked Ensemble](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/stacked-ensembles.html) method is supervised ensemble machine learning algorithm that finds the optimal combination of a collection of prediction algorithms using a process called stacking. Like all supervised models in H2O, Stacked Ensemble supports regression, binary classification and multiclass classification.
 
 #### Train and cross-validate three base models
 
