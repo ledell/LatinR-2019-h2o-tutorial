@@ -32,7 +32,7 @@ Software requirements:
 
  - Java 8-12 above (both the JRE or JDK work).  There are tips [here](https://twitter.com/ledell/status/1148512123083010048) for installing Java (note that Java 12 is now supported as of H2O 3.26.0.1.)
  - **h2o** R package can be downloaded from CRAN
- 
+
 ```{r}
 #install.packages("h2o")
 ```
@@ -42,7 +42,7 @@ Software requirements:
 Load the **h2o** R package and initialize a local H2O cluster.
 
 ```{r}
-library("h2o") 
+library("h2o")
 h2o.init()
 h2o.no_progress()  # Turn off progress bars for notebook readability
 ```
@@ -61,7 +61,7 @@ The best (most efficient) way to read the data from disk into H2O using `h2o.imp
 data_file <- "./data/loan.csv"
 if (!file.exists(data_file)) {
   data_file <- "https://raw.githubusercontent.com/ledell/LatinR-2019-h2o-tutorial/master/data/loan.csv"
-} 
+}
 data <- h2o.importFile(data_file)  # 163,987 rows x 15 columns
 dim(data)
 ```
@@ -99,7 +99,7 @@ h2o.describe(data)
 In supervised learning problems, it's common to split the data into several pieces.  One piece is used for training the model and one is to be used for testing. In some cases, we may also want to use a seperate holdout set ("validation set") which we use to help the model train.  There are several types of validation strategies used in machine learning (e.g. validation set, cross-validation), and for the purposes of the tutorial, we will use a training set, a validation set and a test set.
 
 ```{r}
-splits <- h2o.splitFrame(data = data, 
+splits <- h2o.splitFrame(data = data,
                          ratios = c(0.7, 0.15),  # partition data into 70%, 15%, 15% chunks
                          destination_frames = c("train", "valid", "test"), # frame ID (not required)
                          seed = 1)  # setting a seed will guarantee reproducibility
@@ -139,7 +139,7 @@ Now that we have prepared the data, we can train some models.  We will start by 
 3. <a href="#gbm">Gradient Boosting Machine (GBM)</a>
 4. <a href="#deep-learning">Deep Learning</a>
 
-### GLM 
+### GLM
 
 Let's start with a basic binomial Generalized Linear Model (GLM).  By default, `h2o.glm()` uses a regularized, elastic net model (with alpha = 0.5).  This algorithm is modeled after the `glmnet()` function and so you can expect similar defaults and results.
 
@@ -148,8 +148,8 @@ Let's start with a basic binomial Generalized Linear Model (GLM).  By default, `
 For now, let's just pass in the `train` dataset to the `training_frame` argument.  We will skip the `validation_frame` for now.
 
 ```{r}
-glm_fit1 <- h2o.glm(x = x, 
-                    y = y, 
+glm_fit1 <- h2o.glm(x = x,
+                    y = y,
                     training_frame = train,
                     family = "binomial")  #Like glm() and glmnet(), h2o.glm() has the family argument
 ```
@@ -178,7 +178,7 @@ h2o.varimp_plot(glm_fit1)
 
 #### Performance metrics
 
-To generate performance metrics on a test set, we use the `h2o.performance()` function which generates a `H2OBinomialMetrics` object.  Stored in this object are a handful of different performance metrics. 
+To generate performance metrics on a test set, we use the `h2o.performance()` function which generates a `H2OBinomialMetrics` object.  Stored in this object are a handful of different performance metrics.
 
 ```{r}
 glm_perf1 <- h2o.performance(model = glm_fit1,
@@ -189,7 +189,7 @@ print(glm_perf1)
 Instead of printing the entire model performance metrics object, it is probably easier to print just the metric that you are interested in comparing using a utility function like `h2o.auc()`.
 
 ```{r}
-# Retreive test set AUC from the performance object
+# Retrieve test set AUC from the performance object
 h2o.auc(glm_perf1)
 ```
 
@@ -201,7 +201,7 @@ preds <- predict(glm_fit1, newdata = test)
 head(preds)
 ```
 
-This For classification, this gives a three-column frame.  The first column is the predicted class, based on a threshold chosen optimally by H2O.  The predicted values for each each class follows. 
+This For classification, this gives a three-column frame.  The first column is the predicted class, based on a threshold chosen optimally by H2O.  The predicted values for each each class follows.
 
 #### Cross-validation
 
@@ -212,8 +212,8 @@ Next we will provide a simple example of how to do cross-validation in H2O.  It'
 Here we will perform 5-fold cross-validation and then take a look at the 5-fold cross-validated AUC.  Since the folds will be randomly selected, we must set a seed to ensure reproducibility.
 
 ```{r}
-glm_fit2 <- h2o.glm(x = x, 
-                    y = y, 
+glm_fit2 <- h2o.glm(x = x,
+                    y = y,
                     training_frame = train,
                     family = "binomial",
                     nfolds = 5,
@@ -279,7 +279,7 @@ rf_perf1 <- h2o.performance(model = rf_fit1,
 rf_perf2 <- h2o.performance(model = rf_fit2,
                             newdata = test)
 
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(rf_perf1)
 h2o.auc(rf_perf2)
 ```
@@ -337,7 +337,7 @@ sh[, c("number_of_trees", "validation_auc")]
 rf_perf3 <- h2o.performance(model = rf_fit3,
                             newdata = test)
 
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(rf_perf1)
 h2o.auc(rf_perf2)
 h2o.auc(rf_perf3)
@@ -383,7 +383,7 @@ gbm_perf1 <- h2o.performance(model = gbm_fit1,
 gbm_perf2 <- h2o.performance(model = gbm_fit2,
                              newdata = test)
 
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(gbm_perf1)
 h2o.auc(gbm_perf2)
 ```
@@ -470,7 +470,7 @@ dl_perf2 <- h2o.performance(model = dl_fit2,
                             newdata = test)
 dl_perf3 <- h2o.performance(model = dl_fit3,
                             newdata = test)
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(dl_perf1)
 h2o.auc(dl_perf2)
 h2o.auc(dl_perf3)
@@ -488,7 +488,7 @@ plot(dl_fit3, metric = "AUC")
 
 ### Grid Search
 
-One of the most powerful algorithms inside H2O is the [XGBoost](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/xgboost.html) algorithm.  Unlike the rest of the H2O algorithms, XGBoost is a third-party software tool which we have packaged and provided an interface for.  We preserved all the default values from the original XGBoost software, however, some of the defaults are not very good (e.g. learning rate) and need to be tuned in order to achive superior results. 
+One of the most powerful algorithms inside H2O is the [XGBoost](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/xgboost.html) algorithm.  Unlike the rest of the H2O algorithms, XGBoost is a third-party software tool which we have packaged and provided an interface for.  We preserved all the default values from the original XGBoost software, however, some of the defaults are not very good (e.g. learning rate) and need to be tuned in order to achive superior results.
 
 #### XGBoost with Random Grid Search
 
@@ -535,8 +535,8 @@ xgb_grid <- h2o.grid(algorithm = "xgboost",
 #### View model performance over the grid
 
 ```{r}
-gbm_gridperf <- h2o.getGrid(grid_id = xgb_grid@grid_id, 
-                            sort_by = "auc", 
+gbm_gridperf <- h2o.getGrid(grid_id = xgb_grid@grid_id,
+                            sort_by = "auc",
                             decreasing = TRUE)
 print(gbm_gridperf)
 ```
@@ -554,7 +554,7 @@ Evaluate test set AUC.
 ```{r}
 xgb_perf <- h2o.performance(model = xgb_fit,
                             newdata = test)
-# Retreive test set AUC
+# Retrieve test set AUC
 h2o.auc(xgb_perf)
 ```
 
@@ -615,7 +615,7 @@ perf <- h2o.performance(ensemble, newdata = test)
 perf_gbm_test <- h2o.performance(my_gbm, newdata = test)
 perf_xgb_test <- h2o.performance(my_xgb, newdata = test)
 perf_dl_test <- h2o.performance(my_dl, newdata = test)
-baselearner_best_auc_test <- max(h2o.auc(perf_gbm_test), 
+baselearner_best_auc_test <- max(h2o.auc(perf_gbm_test),
                                  h2o.auc(perf_xgb_test),
                                  h2o.auc(perf_dl_test))
 ensemble_auc_test <- h2o.auc(perf)
@@ -628,7 +628,7 @@ print(sprintf("Ensemble Test AUC:  %s", ensemble_auc_test))
 
 [H2O AutoML](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/automl.html) can be used for automating the machine learning workflow, which includes automatic training and tuning of many models within a user-specified time-limit. Stacked Ensembles – one based on all previously trained models, another one on the best model of each family – will be automatically trained on collections of individual models to produce highly predictive ensemble models which, in most cases, will be the top performing models in the AutoML Leaderboard.
 
-#### Run AutoML 
+#### Run AutoML
 
 Run AutoML, stopping after 10 models.  The `max_models` argument specifies the number of individual (or "base") models, and does not include the two ensemble models that are trained at the end.
 ```{r}
@@ -669,5 +669,3 @@ aml_perf <- h2o.performance(model = aml@leader,
                             newdata = test)
 h2o.auc(aml_perf)
 ```
-
-
